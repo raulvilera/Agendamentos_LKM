@@ -396,115 +396,32 @@
         </div>
     </div>
 
-    <script>
-        // Configurações do sistema
-const API_BASE_URL = 'https://script.google.com/macros/s/SEU_SCRIPT_ID/exec'; // Substitua pelo seu URL
-const PROATI_EMAILS = ['proati@prof.educacao.sp.gov.br']; // E-mails PROATI (opcional)
-
-// Estado da aplicação
-let currentUser = null;
-let agendamentos = [];
-
-// Elementos DOM
-const loginScreen = document.getElementById('login-screen');
-const app = document.getElementById('app');
-const loginForm = document.getElementById('login-form');
-const emailInput = document.getElementById('email');
-const passwordInput = document.getElementById('password');
-const emailError = document.getElementById('email-error');
-const passwordError = document.getElementById('password-error');
-const loginBtn = document.getElementById('login-btn');
-const loginText = document.getElementById('login-text');
-const loginSpinner = document.getElementById('login-spinner');
-const logoutBtn = document.getElementById('logout-btn');
-const userEmailSpan = document.getElementById('user-email');
-const userNameSpan = document.getElementById('user-name');
-const agendamentoForm = document.getElementById('agendamento-form');
-const nomeProfessorInput = document.getElementById('nome-professor');
-const submitAgendamentoBtn = document.getElementById('submit-agendamento');
-const submitText = document.getElementById('submit-text');
-const submitSpinner = document.getElementById('submit-spinner');
-const agendamentoSuccess = document.getElementById('agendamento-success');
-const agendamentoError = document.getElementById('agendamento-error');
-const tipoAparelhoSelect = document.getElementById('tipo-aparelho');
-const marcaAparelhoInput = document.getElementById('marca-aparelho');
-const quantidadeInput = document.getElementById('quantidade');
-const salaSelect = document.getElementById('sala');
-const aulasSelect = document.getElementById('aulas');
-const dataAgendamentoInput = document.getElementById('data-agendamento');
-const meusAgendamentosTable = document.getElementById('meus-agendamentos-table').getElementsByTagName('tbody')[0];
-const todosAgendamentosTable = document.getElementById('todos-agendamentos-table').getElementsByTagName('tbody')[0];
-const adminTab = document.getElementById('admin-tab');
-
-// Inicialização
-document.addEventListener('DOMContentLoaded', function() {
-    // Preencher opções de sala
-    for (let i = 1; i <= 22; i++) {
-        const option = document.createElement('option');
-        option.value = i;
-        option.textContent = i;
-        salaSelect.appendChild(option);
-    }
-    
-    // Configurar formulário de login
-    loginForm.addEventListener('submit', function(e) {
-        e.preventDefault();
-        handleLogin();
-    });
-    
-    // Verificar autenticação ao carregar
-    checkAuth();
-    
-    // Outros listeners
-    setupEventListeners();
-});
-
-// Função para chamadas à API
-async function callApi({ path, method = 'GET', data = null, token = null }) {
-    const options = { method };
-    
-    if (method === 'POST') {
-        options.headers = { 'Content-Type': 'application/json' };
-        options.body = JSON.stringify({ path, data, token });
-    } else {
-        const params = new URLSearchParams({ path });
-        if (token) params.append('token', token);
-        path = `?${params.toString()}`;
-    }
-    
-    const response = await fetch(`${API_BASE_URL}${method === 'GET' ? path : ''}`, options);
-    
-    if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || error.error || 'Erro na requisição');
-    }
-    
-    return response.json();
-}
-
-// Autenticação
+   // Autenticação
 async function checkAuth() {
     const token = localStorage.getItem('authToken');
     if (!token) return;
-    
+
     try {
-        const { valid, user } = await callApi({
+        const response = await callApi({
             path: '/auth/validate',
             method: 'POST',
             data: { token }
         });
-        
-        if (valid) {
-            currentUser = {
-                email: user.email,
-                nome: user.nome,
-                isProati: user.perfil === 'PROATI',
-                token
-            };
-            initApp();
-        } else {
+
+        if (!response.valid) {
             localStorage.removeItem('authToken');
+            return;
         }
+
+        currentUser = {
+            email: response.user.email,
+            nome: response.user.nome,
+            isProati: response.user.perfil === 'PROATI',
+            token
+        };
+
+        initApp();
+
     } catch (error) {
         console.error('Erro ao validar token:', error);
         localStorage.removeItem('authToken');
@@ -514,51 +431,53 @@ async function checkAuth() {
 async function handleLogin() {
     const email = emailInput.value.trim();
     const password = passwordInput.value.trim();
-    
+
     // Reset erros
     emailError.classList.add('hidden');
     passwordError.classList.add('hidden');
-    
-    // Validação básica
+
     if (!email) {
         showError(emailError, 'Por favor, insira seu e-mail');
         return;
     }
-    
+
     if (!isValidEmail(email)) {
         showError(emailError, 'Por favor, insira um e-mail institucional válido');
         return;
     }
-    
+
     if (!password) {
         showError(passwordError, 'Por favor, insira sua senha');
         return;
     }
-    
-    // Mostrar loading
+
     loginText.classList.add('hidden');
     loginSpinner.classList.remove('hidden');
     loginBtn.disabled = true;
-    
+
     try {
-        const { token, user } = await callApi({
+        const response = await callApi({
             path: '/auth/login',
             method: 'POST',
             data: { email, password }
         });
-        
+
+        if (!response.token) {
+            throw new Error(response.error || 'Falha no login');
+        }
+
         currentUser = {
-            email: user.email,
-            nome: user.nome,
-            isProati: user.perfil === 'PROATI',
-            token
+            email: response.user.email,
+            nome: response.user.nome,
+            isProati: response.user.perfil === 'PROATI',
+            token: response.token
         };
-        
-        localStorage.setItem('authToken', token);
+
+        localStorage.setItem('authToken', response.token);
         initApp();
-        
+
     } catch (error) {
-        showError(passwordError, error.message);
+        showError(passwordError, error.message || 'Erro inesperado');
         passwordInput.value = '';
     } finally {
         loginText.classList.remove('hidden');
@@ -567,395 +486,5 @@ async function handleLogin() {
     }
 }
 
-function isValidEmail(email) {
-    return email.endsWith('@prof.educacao.sp.gov.br');
-}
-
-function initApp() {
-    loginScreen.classList.add('hidden');
-    app.classList.remove('hidden');
-    
-    // Preencher informações do usuário
-    userEmailSpan.textContent = currentUser.email;
-    userNameSpan.textContent = currentUser.nome;
-    
-    // Preencher nome do professor automaticamente
-    nomeProfessorInput.value = currentUser.nome;
-    
-    // Mostrar/ocultar aba de administração conforme permissão
-    adminTab.classList.toggle('hidden', !currentUser.isProati);
-    
-    // Definir data mínima como hoje
-    const today = new Date().toISOString().split('T')[0];
-    dataAgendamentoInput.min = today;
-    
-    // Carregar dados iniciais
-    loadMeusAgendamentos();
-}
-
-function handleLogout() {
-    localStorage.removeItem('authToken');
-    currentUser = null;
-    
-    loginScreen.classList.remove('hidden');
-    app.classList.add('hidden');
-    
-    // Limpar formulários
-    loginForm.reset();
-    agendamentoForm.reset();
-    emailError.classList.add('hidden');
-    passwordError.classList.add('hidden');
-}
-
-// Gerenciamento de Agendamentos
-function setupEventListeners() {
-    logoutBtn.addEventListener('click', handleLogout);
-    
-    // Tabs
-    document.querySelectorAll('.tab').forEach(tab => {
-        tab.addEventListener('click', switchTab);
-    });
-    
-    // Formulário de agendamento
-    tipoAparelhoSelect.addEventListener('change', updateMarcaAparelho);
-    agendamentoForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        await handleAgendamentoSubmit();
-    });
-}
-
-function switchTab(e) {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-    
-    const tab = e.currentTarget;
-    tab.classList.add('active');
-    const tabId = tab.getAttribute('data-tab');
-    document.getElementById(tabId).classList.add('active');
-    
-    if (tabId === 'meus-agendamentos') {
-        loadMeusAgendamentos();
-    } else if (tabId === 'todos-agendamentos' && currentUser.isProati) {
-        loadTodosAgendamentos();
-    }
-}
-
-function updateMarcaAparelho() {
-    const tipo = tipoAparelhoSelect.value;
-    let marca = '';
-    
-    switch(tipo) {
-        case 'Tablet':
-        case 'Notebook':
-        case 'Smartphone':
-            marca = 'Positivo';
-            break;
-        case 'Chromebook':
-            marca = 'Samsung';
-            break;
-        default:
-            marca = '';
-    }
-    
-    marcaAparelhoInput.value = marca;
-}
-
-async function handleAgendamentoSubmit() {
-    if (!agendamentoForm.checkValidity()) {
-        agendamentoForm.reportValidity();
-        return;
-    }
-    
-    const agendamento = {
-        professor: nomeProfessorInput.value.trim(),
-        email: currentUser.email,
-        data: dataAgendamentoInput.value,
-        tipo: tipoAparelhoSelect.value,
-        marca: marcaAparelhoInput.value,
-        quantidade: parseInt(quantidadeInput.value),
-        sala: salaSelect.value,
-        aulas: Array.from(aulasSelect.selectedOptions).map(opt => opt.value)
-    };
-    
-    // Mostrar loading
-    submitText.classList.add('hidden');
-    submitSpinner.classList.remove('hidden');
-    submitAgendamentoBtn.disabled = true;
-    agendamentoError.classList.add('hidden');
-    
-    try {
-        const result = await callApi({
-            path: '/agendamentos',
-            method: 'POST',
-            data: agendamento,
-            token: currentUser.token
-        });
-        
-        if (result.error === 'Conflito de agendamento') {
-            const conflitos = result.conflitos.map(c => 
-                `Sala ${c.sala} nas aulas ${c.aulas.join(', ')} com ${c.professor}`
-            ).join('\n');
-            
-            throw new Error(`Conflito de agendamento:\n${conflitos}`);
-        }
-        
-        agendamentoSuccess.textContent = 'Agendamento realizado com sucesso!';
-        agendamentoSuccess.classList.remove('hidden');
-        
-        agendamentoForm.reset();
-        marcaAparelhoInput.value = '';
-        
-        await loadMeusAgendamentos();
-        if (currentUser.isProati) {
-            await loadTodosAgendamentos();
-        }
-        
-        setTimeout(() => {
-            agendamentoSuccess.classList.add('hidden');
-        }, 3000);
-        
-    } catch (error) {
-        showError(agendamentoError, error.message);
-    } finally {
-        submitText.classList.remove('hidden');
-        submitSpinner.classList.add('hidden');
-        submitAgendamentoBtn.disabled = false;
-    }
-}
-
-async function loadMeusAgendamentos() {
-    meusAgendamentosTable.innerHTML = '';
-    document.getElementById('loading-meus').classList.remove('hidden');
-    
-    try {
-        const data = await callApi({
-            path: '/agendamentos/me',
-            token: currentUser.token
-        });
-        
-        agendamentos = data;
-        
-        if (data.length === 0) {
-            const row = document.createElement('tr');
-            row.innerHTML = `<td colspan="7" style="text-align: center;">Nenhum agendamento encontrado</td>`;
-            meusAgendamentosTable.appendChild(row);
-            return;
-        }
-        
-        data.sort((a, b) => new Date(a.data) - new Date(b.data));
-        
-        data.forEach(agendamento => {
-            const row = document.createElement('tr');
-            row.innerHTML = `
-                <td>${formatDate(agendamento.data)}</td>
-                <td>${agendamento.tipo}</td>
-                <td>${agendamento.marca}</td>
-                <td>${agendamento.quantidade}</td>
-                <td>${agendamento.sala}</td>
-                <td>${agendamento.aulas.join(', ')}</td>
-                <td>
-                    <button class="action-btn edit-btn" data-id="${agendamento.id}">Editar</button>
-                    <button class="action-btn delete-btn" data-id="${agendamento.id}">Excluir</button>
-                </td>
-            `;
-            meusAgendamentosTable.appendChild(row);
-        });
-        
-        setupActionButtons();
-        
-    } catch (error) {
-        console.error('Erro ao carregar agendamentos:', error);
-        showError(agendamentoError, 'Erro ao carregar agendamentos');
-    } finally {
-        document.getElementById('loading-meus').classList.add('hidden');
-    }
-}
-
-async function loadTodosAgendamentos() {
-    if (!currentUser.isProati) return;
-    
-    todosAgendamentosTable.innerHTML = '';
-    document.getElementById('loading-todos').classList.remove('hidden');
-    
-    try {
-        const data = await callApi({
-            path: '/agendamentos',
-            token: currentUser.token
-        });
-        
-        if (data.length === 0) {
-            const row = document.createElement('tr');
-            row.innerHTML = `<td colspan="8" style="text-align: center;">Nenhum agendamento encontrado</td>`;
-            todosAgendamentosTable.appendChild(row);
-            return;
-        }
-        
-        data.sort((a, b) => new Date(a.data) - new Date(b.data));
-        
-        data.forEach(agendamento => {
-            const row = document.createElement('tr');
-            row.innerHTML = `
-                <td>${agendamento.professor}</td>
-                <td>${formatDate(agendamento.data)}</td>
-                <td>${agendamento.tipo}</td>
-                <td>${agendamento.marca}</td>
-                <td>${agendamento.quantidade}</td>
-                <td>${agendamento.sala}</td>
-                <td>${agendamento.aulas.join(', ')}</td>
-                <td>
-                    ${agendamento.email === currentUser.email ? `
-                        <button class="action-btn edit-btn" data-id="${agendamento.id}">Editar</button>
-                        <button class="action-btn delete-btn" data-id="${agendamento.id}">Excluir</button>
-                    ` : ''}
-                </td>
-            `;
-            todosAgendamentosTable.appendChild(row);
-        });
-        
-        setupActionButtons();
-        
-    } catch (error) {
-        console.error('Erro ao carregar todos os agendamentos:', error);
-        showError(agendamentoError, 'Erro ao carregar agendamentos');
-    } finally {
-        document.getElementById('loading-todos').classList.add('hidden');
-    }
-}
-
-function setupActionButtons() {
-    document.querySelectorAll('.edit-btn').forEach(btn => {
-        btn.addEventListener('click', handleEditAgendamento);
-    });
-    
-    document.querySelectorAll('.delete-btn').forEach(btn => {
-        btn.addEventListener('click', handleDeleteAgendamento);
-    });
-}
-
-async function handleEditAgendamento(e) {
-    const id = e.target.getAttribute('data-id');
-    const agendamento = agendamentos.find(a => a.id === id);
-    
-    if (!agendamento) return;
-    
-    // Preencher formulário
-    nomeProfessorInput.value = agendamento.professor;
-    dataAgendamentoInput.value = agendamento.data;
-    tipoAparelhoSelect.value = agendamento.tipo;
-    marcaAparelhoInput.value = agendamento.marca;
-    quantidadeInput.value = agendamento.quantidade;
-    salaSelect.value = agendamento.sala;
-    
-    Array.from(aulasSelect.options).forEach(option => {
-        option.selected = agendamento.aulas.includes(option.value);
-    });
-    
-    document.querySelector('.tab[data-tab="agendamento"]').click();
-    
-    agendamentoForm.removeEventListener('submit', handleAgendamentoSubmit);
-    
-    agendamentoForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        await updateAgendamento(id);
-    });
-    
-    submitText.textContent = 'Atualizar Agendamento';
-}
-
-async function updateAgendamento(id) {
-    const agendamento = {
-        professor: nomeProfessorInput.value.trim(),
-        data: dataAgendamentoInput.value,
-        tipo: tipoAparelhoSelect.value,
-        marca: marcaAparelhoInput.value,
-        quantidade: parseInt(quantidadeInput.value),
-        sala: salaSelect.value,
-        aulas: Array.from(aulasSelect.selectedOptions).map(opt => opt.value)
-    };
-    
-    // Mostrar loading
-    submitText.classList.add('hidden');
-    submitSpinner.classList.remove('hidden');
-    submitAgendamentoBtn.disabled = true;
-    agendamentoError.classList.add('hidden');
-    
-    try {
-        const result = await callApi({
-            path: `/agendamentos/${id}`,
-            method: 'PUT',
-            data: agendamento,
-            token: currentUser.token
-        });
-        
-        if (result.error === 'Conflito de agendamento') {
-            const conflitos = result.conflitos.map(c => 
-                `Sala ${c.sala} nas aulas ${c.aulas.join(', ')} com ${c.professor}`
-            ).join('\n');
-            
-            throw new Error(`Conflito de agendamento:\n${conflitos}`);
-        }
-        
-        agendamentoSuccess.textContent = 'Agendamento atualizado com sucesso!';
-        agendamentoSuccess.classList.remove('hidden');
-        
-        agendamentoForm.reset();
-        marcaAparelhoInput.value = '';
-        
-        agendamentoForm.removeEventListener('submit', updateAgendamento);
-        agendamentoForm.addEventListener('submit', handleAgendamentoSubmit);
-        submitText.textContent = 'Agendar';
-        
-        await loadMeusAgendamentos();
-        if (currentUser.isProati) {
-            await loadTodosAgendamentos();
-        }
-        
-        setTimeout(() => {
-            agendamentoSuccess.classList.add('hidden');
-        }, 3000);
-        
-    } catch (error) {
-        showError(agendamentoError, error.message);
-    } finally {
-        submitText.classList.remove('hidden');
-        submitSpinner.classList.add('hidden');
-        submitAgendamentoBtn.disabled = false;
-    }
-}
-
-async function handleDeleteAgendamento(e) {
-    if (!confirm('Tem certeza que deseja excluir este agendamento?')) return;
-    
-    const id = e.target.getAttribute('data-id');
-    
-    try {
-        await callApi({
-            path: `/agendamentos/${id}`,
-            method: 'DELETE',
-            token: currentUser.token
-        });
-        
-        await loadMeusAgendamentos();
-        if (currentUser.isProati) {
-            await loadTodosAgendamentos();
-        }
-        
-    } catch (error) {
-        console.error('Erro ao excluir agendamento:', error);
-        showError(agendamentoError, 'Erro ao excluir agendamento');
-    }
-}
-
-// Utilitários
-function formatDate(dateString) {
-    const options = { day: '2-digit', month: '2-digit', year: 'numeric' };
-    return new Date(dateString).toLocaleDateString('pt-BR', options);
-}
-
-function showError(element, message) {
-    element.textContent = message;
-    element.classList.remove('hidden');
-}
-}    </script>
 </body>
 </html>
