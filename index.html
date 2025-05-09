@@ -396,95 +396,578 @@
         </div>
     </div>
 
-   // Autenticação
-async function checkAuth() {
-    const token = localStorage.getItem('authToken');
-    if (!token) return;
+    <script>
+        // Configurações do sistema
+        const API_BASE_URL = 'https://sua-api.com'; // Substitua pela URL da sua API
+        const PROATI_EMAILS = ['proati@sed.educacao.sp.gov.br'];
+        
+        // Estado da aplicação
+        let currentUser = null;
+        let agendamentos = [];
 
-    try {
-        const response = await callApi({
-            path: '/auth/validate',
-            method: 'POST',
-            data: { token }
+        // Elementos DOM
+        const loginScreen = document.getElementById('login-screen');
+        const app = document.getElementById('app');
+        const loginForm = document.getElementById('login-form');
+        const emailInput = document.getElementById('email');
+        const passwordInput = document.getElementById('password');
+        const emailError = document.getElementById('email-error');
+        const passwordError = document.getElementById('password-error');
+        const loginBtn = document.getElementById('login-btn');
+        const loginText = document.getElementById('login-text');
+        const loginSpinner = document.getElementById('login-spinner');
+        const logoutBtn = document.getElementById('logout-btn');
+        const userEmailSpan = document.getElementById('user-email');
+        const userNameSpan = document.getElementById('user-name');
+        
+        // Formulário de agendamento
+        const agendamentoForm = document.getElementById('agendamento-form');
+        const nomeProfessorInput = document.getElementById('nome-professor');
+        const submitAgendamentoBtn = document.getElementById('submit-agendamento');
+        const submitText = document.getElementById('submit-text');
+        const submitSpinner = document.getElementById('submit-spinner');
+        const agendamentoSuccess = document.getElementById('agendamento-success');
+        const agendamentoError = document.getElementById('agendamento-error');
+
+        // Inicialização
+        document.addEventListener('DOMContentLoaded', function() {
+            // Preencher opções de sala
+            for (let i = 1; i <= 22; i++) {
+                const option = document.createElement('option');
+                option.value = i;
+                option.textContent = i;
+                salaSelect.appendChild(option);
+            }
+            
+            // Verificar autenticação ao carregar
+            checkAuth();
+            
+            // Event listeners
+            setupEventListeners();
         });
 
-        if (!response.valid) {
+        function setupEventListeners() {
+            // Login
+            loginForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                await handleLogin();
+            });
+            
+            // Logout
+            logoutBtn.addEventListener('click', handleLogout);
+            
+            // Tabs
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                    
+                    tab.classList.add('active');
+                    const tabId = tab.getAttribute('data-tab');
+                    document.getElementById(tabId).classList.add('active');
+                    
+                    // Carregar dados quando a tab é clicada
+                    if (tabId === 'meus-agendamentos') {
+                        loadMeusAgendamentos();
+                    } else if (tabId === 'todos-agendamentos' && currentUser.isProati) {
+                        loadTodosAgendamentos();
+                    }
+                });
+            });
+            
+            // Formulário de agendamento
+            tipoAparelhoSelect.addEventListener('change', updateMarcaAparelho);
+            agendamentoForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                await handleAgendamentoSubmit();
+            });
+        }
+
+        async function checkAuth() {
+            const token = localStorage.getItem('authToken');
+            if (!token) return;
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/auth/validate`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                if (response.ok) {
+                    const userData = await response.json();
+                    currentUser = {
+                        email: userData.email,
+                        nome: userData.nome,
+                        isProati: PROATI_EMAILS.includes(userData.email.toLowerCase()) || 
+                                  userData.perfil === 'PROATI',
+                        token
+                    };
+                    initApp();
+                } else {
+                    localStorage.removeItem('authToken');
+                }
+            } catch (error) {
+                console.error('Erro ao validar token:', error);
+                localStorage.removeItem('authToken');
+            }
+        }
+
+        async function handleLogin() {
+            const email = emailInput.value.trim();
+            const password = passwordInput.value.trim();
+            
+            // Reset erros
+            emailError.classList.add('hidden');
+            passwordError.classList.add('hidden');
+            
+            // Validação básica
+            if (!email) {
+                showError(emailError, 'Por favor, insira seu e-mail');
+                return;
+            }
+            
+            if (!isValidEmail(email)) {
+                showError(emailError, 'Por favor, insira um e-mail institucional válido');
+                return;
+            }
+            
+            if (!password) {
+                showError(passwordError, 'Por favor, insira sua senha');
+                return;
+            }
+            
+            // Mostrar loading
+            loginText.classList.add('hidden');
+            loginSpinner.classList.remove('hidden');
+            loginBtn.disabled = true;
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || 'Erro ao fazer login');
+                }
+                
+                const { token, user } = await response.json();
+                
+                currentUser = {
+                    email: user.email,
+                    nome: user.nome,
+                    isProati: PROATI_EMAILS.includes(user.email.toLowerCase()) || 
+                              user.perfil === 'PROATI',
+                    token
+                };
+                
+                localStorage.setItem('authToken', token);
+                initApp();
+                
+            } catch (error) {
+                showError(passwordError, error.message);
+            } finally {
+                loginText.classList.remove('hidden');
+                loginSpinner.classList.add('hidden');
+                loginBtn.disabled = false;
+            }
+        }
+        
+        function isValidEmail(email) {
+            const regex = /^[a-zA-Z0-9._%+-]+@(prof\.educacao\.sp\.gov\.br|professor\.educacao\.sp\.gov\.br|sed\.educacao\.sp\.gov\.br)$/i;
+            return regex.test(email);
+        }
+        
+        function initApp() {
+            loginScreen.classList.add('hidden');
+            app.classList.remove('hidden');
+            
+            // Preencher informações do usuário
+            userEmailSpan.textContent = currentUser.email;
+            userNameSpan.textContent = currentUser.nome;
+            
+            // Preencher nome do professor automaticamente
+            nomeProfessorInput.value = currentUser.nome;
+            
+            // Mostrar/ocultar aba de administração conforme permissão
+            adminTab.classList.toggle('hidden', !currentUser.isProati);
+            
+            // Definir data mínima como hoje
+            const today = new Date().toISOString().split('T')[0];
+            dataAgendamentoInput.min = today;
+            
+            // Carregar dados iniciais
+            loadMeusAgendamentos();
+        }
+        
+        function handleLogout() {
             localStorage.removeItem('authToken');
-            return;
+            currentUser = null;
+            
+            loginScreen.classList.remove('hidden');
+            app.classList.add('hidden');
+            
+            // Limpar formulário
+            loginForm.reset();
+            emailError.classList.add('hidden');
+            passwordError.classList.add('hidden');
         }
-
-        currentUser = {
-            email: response.user.email,
-            nome: response.user.nome,
-            isProati: response.user.perfil === 'PROATI',
-            token
-        };
-
-        initApp();
-
-    } catch (error) {
-        console.error('Erro ao validar token:', error);
-        localStorage.removeItem('authToken');
-    }
-}
-
-async function handleLogin() {
-    const email = emailInput.value.trim();
-    const password = passwordInput.value.trim();
-
-    // Reset erros
-    emailError.classList.add('hidden');
-    passwordError.classList.add('hidden');
-
-    if (!email) {
-        showError(emailError, 'Por favor, insira seu e-mail');
-        return;
-    }
-
-    if (!isValidEmail(email)) {
-        showError(emailError, 'Por favor, insira um e-mail institucional válido');
-        return;
-    }
-
-    if (!password) {
-        showError(passwordError, 'Por favor, insira sua senha');
-        return;
-    }
-
-    loginText.classList.add('hidden');
-    loginSpinner.classList.remove('hidden');
-    loginBtn.disabled = true;
-
-    try {
-        const response = await callApi({
-            path: '/auth/login',
-            method: 'POST',
-            data: { email, password }
-        });
-
-        if (!response.token) {
-            throw new Error(response.error || 'Falha no login');
+        
+        function updateMarcaAparelho() {
+            const tipo = tipoAparelhoSelect.value;
+            let marca = '';
+            
+            switch(tipo) {
+                case 'Tablet':
+                case 'Notebook':
+                case 'Smartphone':
+                    marca = 'Positivo';
+                    break;
+                case 'Chromebook':
+                    marca = 'Samsung';
+                    break;
+                default:
+                    marca = '';
+            }
+            
+            marcaAparelhoInput.value = marca;
         }
-
-        currentUser = {
-            email: response.user.email,
-            nome: response.user.nome,
-            isProati: response.user.perfil === 'PROATI',
-            token: response.token
-        };
-
-        localStorage.setItem('authToken', response.token);
-        initApp();
-
-    } catch (error) {
-        showError(passwordError, error.message || 'Erro inesperado');
-        passwordInput.value = '';
-    } finally {
-        loginText.classList.remove('hidden');
-        loginSpinner.classList.add('hidden');
-        loginBtn.disabled = false;
-    }
-}
-
+        
+        async function handleAgendamentoSubmit() {
+            // Validar campos
+            if (!agendamentoForm.checkValidity()) {
+                agendamentoForm.reportValidity();
+                return;
+            }
+            
+            const agendamento = {
+                professor: nomeProfessorInput.value.trim(),
+                email: currentUser.email,
+                data: dataAgendamentoInput.value,
+                tipo: tipoAparelhoSelect.value,
+                marca: marcaAparelhoInput.value,
+                quantidade: parseInt(quantidadeInput.value),
+                sala: salaSelect.value,
+                aulas: Array.from(aulasSelect.selectedOptions).map(opt => opt.value)
+            };
+            
+            // Mostrar loading
+            submitText.classList.add('hidden');
+            submitSpinner.classList.remove('hidden');
+            submitAgendamentoBtn.disabled = true;
+            agendamentoError.classList.add('hidden');
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/agendamentos`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${currentUser.token}`
+                    },
+                    body: JSON.stringify(agendamento)
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || 'Erro ao criar agendamento');
+                }
+                
+                // Feedback de sucesso
+                agendamentoSuccess.textContent = 'Agendamento realizado com sucesso!';
+                agendamentoSuccess.classList.remove('hidden');
+                
+                // Limpar formulário
+                agendamentoForm.reset();
+                marcaAparelhoInput.value = '';
+                
+                // Atualizar listagens
+                await loadMeusAgendamentos();
+                if (currentUser.isProati) {
+                    await loadTodosAgendamentos();
+                }
+                
+                // Esconder mensagem após 3 segundos
+                setTimeout(() => {
+                    agendamentoSuccess.classList.add('hidden');
+                }, 3000);
+                
+            } catch (error) {
+                showError(agendamentoError, error.message);
+            } finally {
+                submitText.classList.remove('hidden');
+                submitSpinner.classList.add('hidden');
+                submitAgendamentoBtn.disabled = false;
+            }
+        }
+        
+        async function loadMeusAgendamentos() {
+            meusAgendamentosTable.querySelector('tbody').innerHTML = '';
+            document.getElementById('loading-meus').classList.remove('hidden');
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/agendamentos/me`, {
+                    headers: {
+                        'Authorization': `Bearer ${currentUser.token}`
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Erro ao carregar agendamentos');
+                }
+                
+                const data = await response.json();
+                agendamentos = data;
+                
+                if (data.length === 0) {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `<td colspan="7" style="text-align: center;">Nenhum agendamento encontrado</td>`;
+                    meusAgendamentosTable.querySelector('tbody').appendChild(row);
+                    return;
+                }
+                
+                data.sort((a, b) => new Date(a.data) - new Date(b.data));
+                
+                data.forEach(agendamento => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${formatDate(agendamento.data)}</td>
+                        <td>${agendamento.tipo}</td>
+                        <td>${agendamento.marca}</td>
+                        <td>${agendamento.quantidade}</td>
+                        <td>${agendamento.sala}</td>
+                        <td>${agendamento.aulas.join(', ')}</td>
+                        <td>
+                            <button class="action-btn edit-btn" data-id="${agendamento.id}">Editar</button>
+                            <button class="action-btn delete-btn" data-id="${agendamento.id}">Excluir</button>
+                        </td>
+                    `;
+                    meusAgendamentosTable.querySelector('tbody').appendChild(row);
+                });
+                
+                // Adicionar event listeners para edição/exclusão
+                setupActionButtons();
+                
+            } catch (error) {
+                console.error('Erro ao carregar agendamentos:', error);
+                showError(agendamentoError, 'Erro ao carregar agendamentos');
+            } finally {
+                document.getElementById('loading-meus').classList.add('hidden');
+            }
+        }
+        
+        async function loadTodosAgendamentos() {
+            if (!currentUser.isProati) return;
+            
+            todosAgendamentosTable.querySelector('tbody').innerHTML = '';
+            document.getElementById('loading-todos').classList.remove('hidden');
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/agendamentos`, {
+                    headers: {
+                        'Authorization': `Bearer ${currentUser.token}`
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Erro ao carregar todos os agendamentos');
+                }
+                
+                const data = await response.json();
+                
+                if (data.length === 0) {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `<td colspan="8" style="text-align: center;">Nenhum agendamento encontrado</td>`;
+                    todosAgendamentosTable.querySelector('tbody').appendChild(row);
+                    return;
+                }
+                
+                data.sort((a, b) => new Date(a.data) - new Date(b.data));
+                
+                data.forEach(agendamento => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${agendamento.professor}</td>
+                        <td>${formatDate(agendamento.data)}</td>
+                        <td>${agendamento.tipo}</td>
+                        <td>${agendamento.marca}</td>
+                        <td>${agendamento.quantidade}</td>
+                        <td>${agendamento.sala}</td>
+                        <td>${agendamento.aulas.join(', ')}</td>
+                        <td>
+                            ${agendamento.email === currentUser.email ? `
+                                <button class="action-btn edit-btn" data-id="${agendamento.id}">Editar</button>
+                                <button class="action-btn delete-btn" data-id="${agendamento.id}">Excluir</button>
+                            ` : ''}
+                        </td>
+                    `;
+                    todosAgendamentosTable.querySelector('tbody').appendChild(row);
+                });
+                
+                // Adicionar event listeners para edição/exclusão
+                setupActionButtons();
+                
+            } catch (error) {
+                console.error('Erro ao carregar todos os agendamentos:', error);
+                showError(agendamentoError, 'Erro ao carregar agendamentos');
+            } finally {
+                document.getElementById('loading-todos').classList.add('hidden');
+            }
+        }
+        
+        function setupActionButtons() {
+            document.querySelectorAll('.edit-btn').forEach(btn => {
+                btn.addEventListener('click', handleEditAgendamento);
+            });
+            
+            document.querySelectorAll('.delete-btn').forEach(btn => {
+                btn.addEventListener('click', handleDeleteAgendamento);
+            });
+        }
+        
+        async function handleEditAgendamento(e) {
+            const id = e.target.getAttribute('data-id');
+            const agendamento = agendamentos.find(a => a.id === id);
+            
+            if (!agendamento) return;
+            
+            // Preencher formulário com os dados do agendamento
+            nomeProfessorInput.value = agendamento.professor;
+            dataAgendamentoInput.value = agendamento.data;
+            tipoAparelhoSelect.value = agendamento.tipo;
+            marcaAparelhoInput.value = agendamento.marca;
+            quantidadeInput.value = agendamento.quantidade;
+            salaSelect.value = agendamento.sala;
+            
+            // Selecionar aulas
+            Array.from(aulasSelect.options).forEach(option => {
+                option.selected = agendamento.aulas.includes(option.value);
+            });
+            
+            // Rolar para o formulário
+            document.querySelector('.tab[data-tab="agendamento"]').click();
+            
+            // Remover o evento de submit atual
+            agendamentoForm.removeEventListener('submit', handleAgendamentoSubmit);
+            
+            // Adicionar novo evento para atualização
+            agendamentoForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                await updateAgendamento(id);
+            });
+            
+            // Mudar texto do botão
+            submitText.textContent = 'Atualizar Agendamento';
+        }
+        
+        async function updateAgendamento(id) {
+            const agendamento = {
+                professor: nomeProfessorInput.value.trim(),
+                data: dataAgendamentoInput.value,
+                tipo: tipoAparelhoSelect.value,
+                marca: marcaAparelhoInput.value,
+                quantidade: parseInt(quantidadeInput.value),
+                sala: salaSelect.value,
+                aulas: Array.from(aulasSelect.selectedOptions).map(opt => opt.value)
+            };
+            
+            // Mostrar loading
+            submitText.classList.add('hidden');
+            submitSpinner.classList.remove('hidden');
+            submitAgendamentoBtn.disabled = true;
+            agendamentoError.classList.add('hidden');
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/agendamentos/${id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${currentUser.token}`
+                    },
+                    body: JSON.stringify(agendamento)
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || 'Erro ao atualizar agendamento');
+                }
+                
+                // Feedback de sucesso
+                agendamentoSuccess.textContent = 'Agendamento atualizado com sucesso!';
+                agendamentoSuccess.classList.remove('hidden');
+                
+                // Limpar formulário
+                agendamentoForm.reset();
+                marcaAparelhoInput.value = '';
+                
+                // Restaurar evento original
+                agendamentoForm.removeEventListener('submit', updateAgendamento);
+                agendamentoForm.addEventListener('submit', handleAgendamentoSubmit);
+                submitText.textContent = 'Agendar';
+                
+                // Atualizar listagens
+                await loadMeusAgendamentos();
+                if (currentUser.isProati) {
+                    await loadTodosAgendamentos();
+                }
+                
+                // Esconder mensagem após 3 segundos
+                setTimeout(() => {
+                    agendamentoSuccess.classList.add('hidden');
+                }, 3000);
+                
+            } catch (error) {
+                showError(agendamentoError, error.message);
+            } finally {
+                submitText.classList.remove('hidden');
+                submitSpinner.classList.add('hidden');
+                submitAgendamentoBtn.disabled = false;
+            }
+        }
+        
+        async function handleDeleteAgendamento(e) {
+            if (!confirm('Tem certeza que deseja excluir este agendamento?')) return;
+            
+            const id = e.target.getAttribute('data-id');
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/agendamentos/${id}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${currentUser.token}`
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Erro ao excluir agendamento');
+                }
+                
+                // Atualizar listagens
+                await loadMeusAgendamentos();
+                if (currentUser.isProati) {
+                    await loadTodosAgendamentos();
+                }
+                
+            } catch (error) {
+                console.error('Erro ao excluir agendamento:', error);
+                showError(agendamentoError, 'Erro ao excluir agendamento');
+            }
+        }
+        
+        function formatDate(dateString) {
+            const options = { day: '2-digit', month: '2-digit', year: 'numeric' };
+            return new Date(dateString).toLocaleDateString('pt-BR', options);
+        }
+        
+        function showError(element, message) {
+            element.textContent = message;
+            element.classList.remove('hidden');
+        }
+    </script>
 </body>
 </html>
+
