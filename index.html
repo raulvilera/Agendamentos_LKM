@@ -398,14 +398,14 @@
 
     <script>
         // Configurações do sistema
-const API_BASE_URL = 'https://script.google.com/macros/s/AKfycbyCFnphqW9t5w-CQ0e37S6VO4YeO0gle5mHBxeQIQyllsCMail8vcL_07zITAwK6Zla/exec'; // Substitua pelo seu URL
-const PROATI_EMAILS = ['proati@sed.educacao.sp.gov.br'];
+const API_BASE_URL = 'https://script.google.com/macros/s/SEU_SCRIPT_ID/exec'; // Substitua pelo seu URL
+const PROATI_EMAILS = ['proati@prof.educacao.sp.gov.br']; // E-mails PROATI (opcional)
 
 // Estado da aplicação
 let currentUser = null;
 let agendamentos = [];
 
-// Elementos DOM (mantidos iguais)
+// Elementos DOM
 const loginScreen = document.getElementById('login-screen');
 const app = document.getElementById('app');
 const loginForm = document.getElementById('login-form');
@@ -432,11 +432,34 @@ const quantidadeInput = document.getElementById('quantidade');
 const salaSelect = document.getElementById('sala');
 const aulasSelect = document.getElementById('aulas');
 const dataAgendamentoInput = document.getElementById('data-agendamento');
-const meusAgendamentosTable = document.getElementById('meus-agendamentos-table');
-const todosAgendamentosTable = document.getElementById('todos-agendamentos-table');
+const meusAgendamentosTable = document.getElementById('meus-agendamentos-table').getElementsByTagName('tbody')[0];
+const todosAgendamentosTable = document.getElementById('todos-agendamentos-table').getElementsByTagName('tbody')[0];
 const adminTab = document.getElementById('admin-tab');
 
-// Função utilitária para chamadas à API
+// Inicialização
+document.addEventListener('DOMContentLoaded', function() {
+    // Preencher opções de sala
+    for (let i = 1; i <= 22; i++) {
+        const option = document.createElement('option');
+        option.value = i;
+        option.textContent = i;
+        salaSelect.appendChild(option);
+    }
+    
+    // Configurar formulário de login
+    loginForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        handleLogin();
+    });
+    
+    // Verificar autenticação ao carregar
+    checkAuth();
+    
+    // Outros listeners
+    setupEventListeners();
+});
+
+// Função para chamadas à API
 async function callApi({ path, method = 'GET', data = null, token = null }) {
     const options = { method };
     
@@ -459,77 +482,7 @@ async function callApi({ path, method = 'GET', data = null, token = null }) {
     return response.json();
 }
 
-// Inicialização (adaptada)
-document.addEventListener('DOMContentLoaded', function() {
-    // Preencher opções de sala
-    for (let i = 1; i <= 22; i++) {
-        const option = document.createElement('option');
-        option.value = i;
-        option.textContent = i;
-        salaSelect.appendChild(option);
-    }
-    
-    // Verificar autenticação ao carregar
-    checkAuth();
-    
-    // Event listeners (mantidos iguais)
-    setupEventListeners();
-});
-
-// Funções auxiliares (mantidas iguais)
-function isValidEmail(email) {
-    const regex = /^[a-zA-Z0-9._%+-]+@(prof\.educacao\.sp\.gov\.br|professor\.educacao\.sp\.gov\.br|sed\.educacao\.sp\.gov\.br)$/i;
-    return regex.test(email);
-}
-
-function formatDate(dateString) {
-    const options = { day: '2-digit', month: '2-digit', year: 'numeric' };
-    return new Date(dateString).toLocaleDateString('pt-BR', options);
-}
-
-function showError(element, message) {
-    element.textContent = message;
-    element.classList.remove('hidden');
-}
-
-function setupEventListeners() {
-    // Login (já adaptado)
-    loginForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        await handleLogin();
-    });
-    
-    // Logout (mantido igual)
-    logoutBtn.addEventListener('click', handleLogout);
-    
-    // Tabs (mantido igual)
-    document.querySelectorAll('.tab').forEach(tab => {
-        tab.addEventListener('click', () => {
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            
-            tab.classList.add('active');
-            const tabId = tab.getAttribute('data-tab');
-            document.getElementById(tabId).classList.add('active');
-            
-            if (tabId === 'meus-agendamentos') {
-                loadMeusAgendamentos();
-            } else if (tabId === 'todos-agendamentos' && currentUser.isProati) {
-                loadTodosAgendamentos();
-            }
-        });
-    });
-    
-    // Formulário de agendamento (já adaptado)
-    tipoAparelhoSelect.addEventListener('change', updateMarcaAparelho);
-    agendamentoForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        await handleAgendamentoSubmit();
-    });
-}
-
-// Funções principais adaptadas para Apps Script
-
+// Autenticação
 async function checkAuth() {
     const token = localStorage.getItem('authToken');
     if (!token) return;
@@ -545,8 +498,7 @@ async function checkAuth() {
             currentUser = {
                 email: user.email,
                 nome: user.nome,
-                isProati: PROATI_EMAILS.includes(user.email.toLowerCase()) || 
-                          user.perfil === 'PROATI',
+                isProati: user.perfil === 'PROATI',
                 token
             };
             initApp();
@@ -560,69 +512,29 @@ async function checkAuth() {
 }
 
 async function handleLogin() {
-  const email = emailInput.value.trim();
-  const password = passwordInput.value.trim();
-  
-  // Validações básicas
-  if (!email) {
-    showError(emailError, 'Por favor, insira seu e-mail');
-    return;
-  }
-  
-  if (!email.endsWith('@prof.educacao.sp.gov.br')) {
-    showError(emailError, 'Apenas e-mails institucionais são permitidos');
-    return;
-  }
-  
-  if (!password) {
-    showError(passwordError, 'Por favor, insira sua senha');
-    return;
-  }
-  
-  // Mostrar loading
-  loginText.classList.add('hidden');
-  loginSpinner.classList.remove('hidden');
-  loginBtn.disabled = true;
-  
-  try {
-    const response = await fetch(`${API_BASE_URL}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        path: '/auth/login',
-        data: { email, password }
-      })
-    });
+    const email = emailInput.value.trim();
+    const password = passwordInput.value.trim();
     
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || 'Erro ao fazer login');
+    // Reset erros
+    emailError.classList.add('hidden');
+    passwordError.classList.add('hidden');
+    
+    // Validação básica
+    if (!email) {
+        showError(emailError, 'Por favor, insira seu e-mail');
+        return;
     }
     
-    const result = await response.json();
+    if (!isValidEmail(email)) {
+        showError(emailError, 'Por favor, insira um e-mail institucional válido');
+        return;
+    }
     
-    currentUser = {
-      email: result.user.email,
-      nome: result.user.nome,
-      isProati: result.user.perfil === 'PROATI',
-      token: result.token
-    };
+    if (!password) {
+        showError(passwordError, 'Por favor, insira sua senha');
+        return;
+    }
     
-    localStorage.setItem('authToken', result.token);
-    initApp();
-    
-  } catch (error) {
-    showError(passwordError, error.message);
-    // Limpa os campos em caso de erro
-    passwordInput.value = '';
-  } finally {
-    loginText.classList.remove('hidden');
-    loginSpinner.classList.add('hidden');
-    loginBtn.disabled = false;
-  }
-}
     // Mostrar loading
     loginText.classList.add('hidden');
     loginSpinner.classList.remove('hidden');
@@ -638,8 +550,7 @@ async function handleLogin() {
         currentUser = {
             email: user.email,
             nome: user.nome,
-            isProati: PROATI_EMAILS.includes(user.email.toLowerCase()) || 
-                      user.perfil === 'PROATI',
+            isProati: user.perfil === 'PROATI',
             token
         };
         
@@ -648,11 +559,16 @@ async function handleLogin() {
         
     } catch (error) {
         showError(passwordError, error.message);
+        passwordInput.value = '';
     } finally {
         loginText.classList.remove('hidden');
         loginSpinner.classList.add('hidden');
         loginBtn.disabled = false;
     }
+}
+
+function isValidEmail(email) {
+    return email.endsWith('@prof.educacao.sp.gov.br');
 }
 
 function initApp() {
@@ -684,10 +600,44 @@ function handleLogout() {
     loginScreen.classList.remove('hidden');
     app.classList.add('hidden');
     
-    // Limpar formulário
+    // Limpar formulários
     loginForm.reset();
+    agendamentoForm.reset();
     emailError.classList.add('hidden');
     passwordError.classList.add('hidden');
+}
+
+// Gerenciamento de Agendamentos
+function setupEventListeners() {
+    logoutBtn.addEventListener('click', handleLogout);
+    
+    // Tabs
+    document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', switchTab);
+    });
+    
+    // Formulário de agendamento
+    tipoAparelhoSelect.addEventListener('change', updateMarcaAparelho);
+    agendamentoForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        await handleAgendamentoSubmit();
+    });
+}
+
+function switchTab(e) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    
+    const tab = e.currentTarget;
+    tab.classList.add('active');
+    const tabId = tab.getAttribute('data-tab');
+    document.getElementById(tabId).classList.add('active');
+    
+    if (tabId === 'meus-agendamentos') {
+        loadMeusAgendamentos();
+    } else if (tabId === 'todos-agendamentos' && currentUser.isProati) {
+        loadTodosAgendamentos();
+    }
 }
 
 function updateMarcaAparelho() {
@@ -711,7 +661,6 @@ function updateMarcaAparelho() {
 }
 
 async function handleAgendamentoSubmit() {
-    // Validar campos (mantido igual)
     if (!agendamentoForm.checkValidity()) {
         agendamentoForm.reportValidity();
         return;
@@ -742,7 +691,6 @@ async function handleAgendamentoSubmit() {
             token: currentUser.token
         });
         
-        // Tratar conflitos
         if (result.error === 'Conflito de agendamento') {
             const conflitos = result.conflitos.map(c => 
                 `Sala ${c.sala} nas aulas ${c.aulas.join(', ')} com ${c.professor}`
@@ -751,21 +699,17 @@ async function handleAgendamentoSubmit() {
             throw new Error(`Conflito de agendamento:\n${conflitos}`);
         }
         
-        // Feedback de sucesso
         agendamentoSuccess.textContent = 'Agendamento realizado com sucesso!';
         agendamentoSuccess.classList.remove('hidden');
         
-        // Limpar formulário
         agendamentoForm.reset();
         marcaAparelhoInput.value = '';
         
-        // Atualizar listagens
         await loadMeusAgendamentos();
         if (currentUser.isProati) {
             await loadTodosAgendamentos();
         }
         
-        // Esconder mensagem após 3 segundos
         setTimeout(() => {
             agendamentoSuccess.classList.add('hidden');
         }, 3000);
@@ -780,7 +724,7 @@ async function handleAgendamentoSubmit() {
 }
 
 async function loadMeusAgendamentos() {
-    meusAgendamentosTable.querySelector('tbody').innerHTML = '';
+    meusAgendamentosTable.innerHTML = '';
     document.getElementById('loading-meus').classList.remove('hidden');
     
     try {
@@ -794,7 +738,7 @@ async function loadMeusAgendamentos() {
         if (data.length === 0) {
             const row = document.createElement('tr');
             row.innerHTML = `<td colspan="7" style="text-align: center;">Nenhum agendamento encontrado</td>`;
-            meusAgendamentosTable.querySelector('tbody').appendChild(row);
+            meusAgendamentosTable.appendChild(row);
             return;
         }
         
@@ -814,7 +758,7 @@ async function loadMeusAgendamentos() {
                     <button class="action-btn delete-btn" data-id="${agendamento.id}">Excluir</button>
                 </td>
             `;
-            meusAgendamentosTable.querySelector('tbody').appendChild(row);
+            meusAgendamentosTable.appendChild(row);
         });
         
         setupActionButtons();
@@ -830,7 +774,7 @@ async function loadMeusAgendamentos() {
 async function loadTodosAgendamentos() {
     if (!currentUser.isProati) return;
     
-    todosAgendamentosTable.querySelector('tbody').innerHTML = '';
+    todosAgendamentosTable.innerHTML = '';
     document.getElementById('loading-todos').classList.remove('hidden');
     
     try {
@@ -842,7 +786,7 @@ async function loadTodosAgendamentos() {
         if (data.length === 0) {
             const row = document.createElement('tr');
             row.innerHTML = `<td colspan="8" style="text-align: center;">Nenhum agendamento encontrado</td>`;
-            todosAgendamentosTable.querySelector('tbody').appendChild(row);
+            todosAgendamentosTable.appendChild(row);
             return;
         }
         
@@ -865,7 +809,7 @@ async function loadTodosAgendamentos() {
                     ` : ''}
                 </td>
             `;
-            todosAgendamentosTable.querySelector('tbody').appendChild(row);
+            todosAgendamentosTable.appendChild(row);
         });
         
         setupActionButtons();
@@ -894,7 +838,7 @@ async function handleEditAgendamento(e) {
     
     if (!agendamento) return;
     
-    // Preencher formulário (mantido igual)
+    // Preencher formulário
     nomeProfessorInput.value = agendamento.professor;
     dataAgendamentoInput.value = agendamento.data;
     tipoAparelhoSelect.value = agendamento.tipo;
@@ -943,7 +887,6 @@ async function updateAgendamento(id) {
             token: currentUser.token
         });
         
-        // Tratar conflitos
         if (result.error === 'Conflito de agendamento') {
             const conflitos = result.conflitos.map(c => 
                 `Sala ${c.sala} nas aulas ${c.aulas.join(', ')} com ${c.professor}`
@@ -952,20 +895,16 @@ async function updateAgendamento(id) {
             throw new Error(`Conflito de agendamento:\n${conflitos}`);
         }
         
-        // Feedback de sucesso
         agendamentoSuccess.textContent = 'Agendamento atualizado com sucesso!';
         agendamentoSuccess.classList.remove('hidden');
         
-        // Limpar formulário
         agendamentoForm.reset();
         marcaAparelhoInput.value = '';
         
-        // Restaurar evento original
         agendamentoForm.removeEventListener('submit', updateAgendamento);
         agendamentoForm.addEventListener('submit', handleAgendamentoSubmit);
         submitText.textContent = 'Agendar';
         
-        // Atualizar listagens
         await loadMeusAgendamentos();
         if (currentUser.isProati) {
             await loadTodosAgendamentos();
@@ -996,7 +935,6 @@ async function handleDeleteAgendamento(e) {
             token: currentUser.token
         });
         
-        // Atualizar listagens
         await loadMeusAgendamentos();
         if (currentUser.isProati) {
             await loadTodosAgendamentos();
@@ -1006,6 +944,18 @@ async function handleDeleteAgendamento(e) {
         console.error('Erro ao excluir agendamento:', error);
         showError(agendamentoError, 'Erro ao excluir agendamento');
     }
+}
+
+// Utilitários
+function formatDate(dateString) {
+    const options = { day: '2-digit', month: '2-digit', year: 'numeric' };
+    return new Date(dateString).toLocaleDateString('pt-BR', options);
+}
+
+function showError(element, message) {
+    element.textContent = message;
+    element.classList.remove('hidden');
+}
 }    </script>
 </body>
 </html>
