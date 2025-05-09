@@ -398,7 +398,7 @@
 
     <script>
         // Configurações do sistema
-const API_BASE_URL = 'https://script.google.com/macros/s/AKfycbwv9y9vzLLuf5mkjddSDzG2m5JbhJO0vOcspzX8NfaR2oq_qQCV3QTSpaFcDCzAvq1k/exec'; // Substitua pelo seu URL
+const API_BASE_URL = 'https://script.google.com/macros/s/AKfycbzOxYyX5ajFVh95LNvy5snCSc1VIKTytuw9_FB_uQZ-bbwqGYZe5xmPQ_VrxH7kFd8t/exec'; // Substitua pelo seu URL
 const PROATI_EMAILS = ['proati@sed.educacao.sp.gov.br'];
 
 // Estado da aplicação
@@ -563,14 +563,14 @@ async function handleLogin() {
   const email = emailInput.value.trim();
   const password = passwordInput.value.trim();
   
-  // Validações
+  // Validações básicas
   if (!email) {
     showError(emailError, 'Por favor, insira seu e-mail');
     return;
   }
   
-  if (!isValidEmail(email)) {
-    showError(emailError, 'Por favor, insira um e-mail institucional válido');
+  if (!email.endsWith('@prof.educacao.sp.gov.br')) {
+    showError(emailError, 'Apenas e-mails institucionais são permitidos');
     return;
   }
   
@@ -615,13 +615,14 @@ async function handleLogin() {
     
   } catch (error) {
     showError(passwordError, error.message);
+    // Limpa os campos em caso de erro
+    passwordInput.value = '';
   } finally {
     loginText.classList.remove('hidden');
     loginSpinner.classList.add('hidden');
     loginBtn.disabled = false;
   }
 }
-    
     // Mostrar loading
     loginText.classList.add('hidden');
     loginSpinner.classList.remove('hidden');
