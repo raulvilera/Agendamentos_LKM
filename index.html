@@ -560,24 +560,67 @@ async function checkAuth() {
 }
 
 async function handleLogin() {
-    const email = emailInput.value.trim();
-    const password = passwordInput.value.trim();
+  const email = emailInput.value.trim();
+  const password = passwordInput.value.trim();
+  
+  // Validações
+  if (!email) {
+    showError(emailError, 'Por favor, insira seu e-mail');
+    return;
+  }
+  
+  if (!isValidEmail(email)) {
+    showError(emailError, 'Por favor, insira um e-mail institucional válido');
+    return;
+  }
+  
+  if (!password) {
+    showError(passwordError, 'Por favor, insira sua senha');
+    return;
+  }
+  
+  // Mostrar loading
+  loginText.classList.add('hidden');
+  loginSpinner.classList.remove('hidden');
+  loginBtn.disabled = true;
+  
+  try {
+    const response = await fetch(`${API_BASE_URL}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        path: '/auth/login',
+        data: { email, password }
+      })
+    });
     
-    // Validações (mantidas iguais)
-    if (!email) {
-        showError(emailError, 'Por favor, insira seu e-mail');
-        return;
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || 'Erro ao fazer login');
     }
     
-    if (!isValidEmail(email)) {
-        showError(emailError, 'Por favor, insira um e-mail institucional válido');
-        return;
-    }
+    const result = await response.json();
     
-    if (!password) {
-        showError(passwordError, 'Por favor, insira sua senha');
-        return;
-    }
+    currentUser = {
+      email: result.user.email,
+      nome: result.user.nome,
+      isProati: result.user.perfil === 'PROATI',
+      token: result.token
+    };
+    
+    localStorage.setItem('authToken', result.token);
+    initApp();
+    
+  } catch (error) {
+    showError(passwordError, error.message);
+  } finally {
+    loginText.classList.remove('hidden');
+    loginSpinner.classList.add('hidden');
+    loginBtn.disabled = false;
+  }
+}
     
     // Mostrar loading
     loginText.classList.add('hidden');
