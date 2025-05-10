@@ -462,62 +462,45 @@
         }
 
         async function handleLogin() {
-            const email = emailInput.value.trim();
-            const password = passwordInput.value.trim();
-            
-            // Reset erros
-            hideError(emailError);
-            hideError(passwordError);
-            
-            // Validação básica
-            if (!validateEmail(email)) {
-                showError(emailError, 'Por favor, insira um e-mail institucional válido');
-                return;
-            }
-            
-            if (!password) {
-                showError(passwordError, 'Por favor, insira sua senha');
-                return;
-            }
-            
-            // Mostrar loading
-            toggleLoginLoading(true);
-            
+    const email = emailInput.value.trim();
+    const password = passwordInput.value.trim();
+    
+    toggleLoginLoading(true);
+    
+    try {
+        const response = await fetch(API_BASE_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                path: '/auth/login', 
+                data: { email, password } 
+            })
+        });
+        
+        // Adicione este debug:
+        const responseText = await response.text();
+        console.log("Resposta bruta:", responseText);
+        
+        if (!response.ok) {
             try {
-                const response = await fetch(API_BASE_URL, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        path: '/auth/login',
-                        data: { email, password }
-                    })
-                });
-                
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || 'Erro ao fazer login');
-                }
-                
-                const { token, user } = await response.json();
-                
-                currentUser = {
-                    email: user.email,
-                    nome: user.nome,
-                    isProati: user.perfil === 'PROATI',
-                    token
-                };
-                
-                localStorage.setItem('authToken', token);
-                initApp();
-                
-            } catch (error) {
-                showError(passwordError, error.message);
-            } finally {
-                toggleLoginLoading(false);
+                const errorData = JSON.parse(responseText);
+                throw new Error(errorData.error || 'Erro ao fazer login');
+            } catch {
+                throw new Error(`Erro HTTP ${response.status}: ${responseText}`);
             }
         }
+        
+        const data = JSON.parse(responseText);
+        const { token, user } = data;
+        
+        // Restante do código...
+    } catch (error) {
+        console.error("Erro completo:", error);
+        alert(`Falha no login: ${error.message}`);
+    } finally {
+        toggleLoginLoading(false);
+    }
+}
         
         function validateEmail(email) {
             const regex = /^[a-zA-Z0-9._%+-]+@(prof\.educacao\.sp\.gov\.br|sed\.educacao\.sp\.gov\.br)$/i;
